@@ -9,6 +9,8 @@ zz<-getwd()
 ylds<-read_excel(paste0(zz,"/data/rallf_master.xlsx"), sheet="yld_soil", na="NA")
 rics<-read_excel(paste0(zz,"/data/rallf_master.xlsx"), sheet="RIC", na="NA")
 str(ylds)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
 #Data conversions ----
 ylds$location<-as.factor(ylds$location)
 ylds$fyr<-as.factor(ylds$year)
@@ -17,21 +19,131 @@ ylds$rep<-as.factor(ylds$rep)
 ylds$var<-as.factor(ylds$var)
 ylds$harv<-as.factor(ylds$harv)
 ylds$harv_trt<-as.factor(ylds$harv_trt)
-
+#Milk conversion ----
+lab.average<-46.5
+ylds$Fat<-1.96
+ylds$NDFD48<-53.54+ylds$NDF*(-.178)
+oldDMI<-(0.0115*1350)/0.3
+ylds$EE<-ylds$Fat+1
+ylds$DMI<-(120/ylds$NDF)+(ylds$NDFD48-45)*.374/1350*100
+ylds$NFC<-100-((ylds$NDF*0.93)+ylds$CP+2.05+7.71)
+ylds$NDFDa<-(45/lab.average)*ylds$NDFD48
+ylds$NDFcp<-ylds$NDF*0.07
+ylds$sTDN<-((0.93*ylds$CP)+(0.97*(ylds$Fat)*2.25)+(ylds$NFC*0.98)+((ylds$NDF-ylds$CP)*(ylds$NDFDa/100)))-7
+ylds$TDN<-(ylds$NFC*.98)+(ylds$CP*.93)+(ylds$Fat*.97*2.25)+((ylds$NDFD48*.93)*(ylds$NDFD48/100))-7
+#ylds$RFQ<-ylds$DMI*ylds$TDN/1.23
+ylds$RFQ2<-((((120/ylds$NDF)+(ylds$NDFD48-45)*0.374/1350*100)*((((100-((ylds$NDF*0.93)+ylds$CP+2.05+7.71))*0.98)+(ylds$CP*0.93)+(2.05*0.97*2.25)+((ylds$NDF*0.93)*(ylds$NDFD48/100)))-7))/1.23)
+ylds$NE<-((ylds$TDN*0.0245)-0.12)/2.2
+ylds$NEl<-(((((ylds$sTDN-((ylds$NDF-ylds$CP)*(ylds$NDFDa/100))+((((((lab.average+(0*12)-ylds$NDFDa)*0.374)*1.83)+ylds$NDFDa)/100)*(ylds$NDF-ylds$NDFcp)))*0.044)+0.207)*0.6741)-0.5656)/2.2
+#base forage DMI
+ylds$bDMI<-(0.0086*1350)/(ylds$NDF/100)
+#adjusted forage DMI
+ylds$aDMI<-((ylds$NDFD48-(45+(0*12)))*0.374)+ylds$bDMI
+#adjusted total forage DMI
+ylds$atDMI<-((ylds$NDFD48-(45+(0*12)))*0.374)+oldDMI
+#Forage percental of total DMI
+ylds$fDMI<-ylds$aDMI/ylds$atDMI
+#milk yield from forage
+ylds$fmilk<-((ylds$aDMI*ylds$NEl)-(0.08*(613.64^0.75)*ylds$fDMI))/0.31
+#milk per ton of forage
+ylds$milk_kg<-(ylds$fmilk/ylds$aDMI)*2.204#lbs milk per kg biomass
+ylds$milk_kg2<-ylds$milk_kg/2.20462 #kg milk per kg biomass
+ylds$myld2<-ylds$milk_kg2*ylds$dm_yld*1000 #kg milk per ha
+#First reshape
 wylds<-ylds %>%
   pivot_wider(names_from = harv, 
-              values_from = c(dm_yld,RFV,RFQ,NDFD, NDF),
+              values_from = c(dm_yld,RFV,RFQ,NDFD, NDF, myld2),
               id_cols=c(location, year, plot, rep, var, harv_trt))
+wylds$fd<-as.factor(str_sub(wylds$var, 3, 4))
+wylds$var2<-as.factor(str_sub(wylds$var, 1, 2))
+#Milk yield HX in 2022 ----
 wylds %>% 
-  filter(year=="2022") %>% 
-  rowwise(c(location, year, plot, rep, var, harv_trt)) %>% 
-  summarise(sum_ylds = sum(c(dm_yld_1st, dm_yld_2nd, dm_yld_3rd, dm_yld_4th, dm_yld_5th), na.rm = TRUE)) %>% 
-  group_by(location, var, harv_trt) %>% 
+  filter(year=="2022"&var2=="HX") %>% 
+  rowwise(c(location, year, plot, rep, fd, harv_trt)) %>% 
+  summarise(sum_ylds = sum(c(myld2_1st, myld2_2nd, myld2_3rd, myld2_4th, myld2_5th), na.rm = TRUE)) %>% 
+  group_by(location, fd, harv_trt) %>% 
   summarise(m_yld = mean(sum_ylds, na.rm=T), 
             sd_yld = sd(sum_ylds, na.rm=T), 
             n_yld = n()) %>% 
   mutate(se_yld=sd_yld/sqrt(n_yld)) %>% 
-  ggplot(aes(y=m_yld, x=var, fill=harv_trt))+
+  filter(location=="Rosemount") %>% 
+  ggplot(aes(y=m_yld, x=fd, fill=harv_trt))+
+  geom_col(position="dodge")+
+  geom_errorbar(aes(ymax=m_yld+se_yld, ymin=m_yld-se_yld), 
+                width=0.5, position=position_dodge(.9))+
+  ylab(expression("Milk yield " ~ (kg ~ ha^{-1})))+
+  coord_cartesian(ylim=c(0, 28000))+
+  xlab("Fall dormancy")+
+  scale_fill_manual(values=cbPalette)+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.88, .88),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("Milk_2022_Ros.png", width=6, height=5, units="in", path="figures/")
+
+#All Yields HX in 2022 ----
+wylds %>% 
+  filter(year=="2022"&var2=="HX") %>% 
+  rowwise(c(location, year, plot, rep, fd, harv_trt)) %>% 
+  summarise(sum_ylds = sum(c(dm_yld_1st, dm_yld_2nd, dm_yld_3rd, dm_yld_4th, dm_yld_5th), na.rm = TRUE)) %>% 
+  group_by(location, fd, harv_trt) %>% 
+  summarise(m_yld = mean(sum_ylds, na.rm=T), 
+            sd_yld = sd(sum_ylds, na.rm=T), 
+            n_yld = n()) %>% 
+  mutate(se_yld=sd_yld/sqrt(n_yld)) %>% 
+  filter(location=="St. Paul") %>% 
+  ggplot(aes(y=m_yld, x=fd, fill=harv_trt))+
+  geom_col(position="dodge")+
+  geom_errorbar(aes(ymax=m_yld+se_yld, ymin=m_yld-se_yld), 
+                width=0.5, position=position_dodge(.9))+
+  ylab(expression("Forage yield " ~ (Mg ~ ha^{-1})))+
+  coord_cartesian(ylim=c(0, 16))+
+  xlab("Fall dormancy")+
+  scale_fill_manual(values=cbPalette)+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.88, .85),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("Forage_2022_SP.png", width=6, height=5, units="in", path="figures/")
+
+mod1<-wylds %>% 
+  filter(year=="2022"&var2=="HX"&location=="St. Paul") %>% 
+  rowwise(c(location, year, plot, rep, fd, harv_trt)) %>% 
+  summarise(sum_ylds = sum(c(dm_yld_1st, dm_yld_2nd, dm_yld_3rd, dm_yld_4th, dm_yld_5th), na.rm = TRUE)) %>% 
+  lme(sum_ylds~fd*harv_trt, random=~1|rep, data=., na.action=na.omit)
+anova(mod1)
+cld(emmeans(mod1, ~fd))
+cld(emmeans(mod1, ~harv_trt))
+
+#HX in 2021
+wylds %>% 
+  filter(year=="2022") %>% 
+  rowwise(c(location, year, plot, rep, var2, fd, harv_trt)) %>% 
+  summarise(sum_ylds = sum(c(dm_yld_1st, dm_yld_2nd, dm_yld_3rd, dm_yld_4th, dm_yld_5th), na.rm = TRUE)) %>% 
+  group_by(location, var2, fd, harv_trt) %>% 
+  summarise(m_yld = mean(sum_ylds, na.rm=T), 
+            sd_yld = sd(sum_ylds, na.rm=T), 
+            n_yld = n()) %>% 
+  mutate(se_yld=sd_yld/sqrt(n_yld)) %>% 
+  ggplot(aes(y=m_yld, x=var2, fill=harv_trt, alpha=fd))+
   facet_grid(~location)+
   geom_col(position="dodge")+
   #geom_bar(position=position_dodge(.9), stat="identity", width=.75) +
@@ -130,7 +242,7 @@ rics$var<-as.factor(rics$var)
 rics$harv_trt<-as.factor(rics$harv_trt)
 #GRP ----
 rics %>% 
-  filter(fyear=="2022") %>% 
+  filter(fyear=="2022"&location=="Rosemount") %>% 
   group_by(location, var, harv_trt) %>% 
   summarise(m_grp= mean(GRP, na.rm=T), 
             sd_grp = sd(GRP, na.rm=T), 
@@ -138,13 +250,28 @@ rics %>%
   mutate(se_grp=sd_grp/sqrt(n_grp)) %>% 
   ggplot(aes(y=m_grp, x=var, fill=harv_trt))+
   facet_grid(~location)+
+  scale_fill_manual(values=cbPalette)+
   geom_col(position="dodge")+
   geom_errorbar(aes(ymax=m_grp+se_grp, ymin=m_grp-se_grp),
                 width=0.5, position=position_dodge(.9))+
-  ylab("Gross Root Production")
+  ylab("Gross Root Production")+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.88, .88),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("GRP_2022_Ros.png", width=6, height=5, units="in", path="figures/")
 #Root death ----
 rics %>% 
-  filter(fyear=="2022") %>% 
+  filter(fyear=="2022"&location=="Rosemount") %>% 
   group_by(location, var, harv_trt) %>% 
   summarise(m_da= mean(DA, na.rm=T), 
             sd_da = sd(DA, na.rm=T), 
@@ -153,9 +280,24 @@ rics %>%
   ggplot(aes(y=m_da, x=var, fill=harv_trt))+
   facet_grid(~location)+
   geom_col(position="dodge")+
+  scale_fill_manual(values=cbPalette)+
   geom_errorbar(aes(ymax=m_da+se_da, ymin=m_da-se_da),
                 width=0.5, position=position_dodge(.9))+
-  ylab("Root mortality")
+  ylab("Root mortality")+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.88, .88),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("Mortality_2022_Ros.png", width=6, height=5, units="in", path="figures/")
 
 #Root ave_rate ----
 rics %>% 
@@ -173,17 +315,63 @@ rics %>%
   ylab("Daily root growth rate")
 #Root ave_rate by year ----
 rics %>% 
-  group_by(location, fyear, harv_trt) %>% 
+  group_by(location, fyear, var, harv_trt) %>% 
   summarise(m_ave_rate= mean(ave_rate, na.rm=T), 
             sd_ave_rate = sd(ave_rate, na.rm=T), 
             n_ave_rate = n()) %>% 
   mutate(se_ave_rate=sd_ave_rate/sqrt(n_ave_rate)) %>% 
-  ggplot(aes(y=m_ave_rate, x=fyear, fill=harv_trt))+
+  filter(fyear=="2022"&location=="St. Paul") %>% 
+  ggplot(aes(y=m_ave_rate, x=var, fill=harv_trt))+
   facet_grid(~location)+
   geom_col(position="dodge")+
   geom_errorbar(aes(ymax=m_ave_rate+se_ave_rate, ymin=m_ave_rate-se_ave_rate),
                 width=0.5, position=position_dodge(.9))+
-  ylab("Daily root growth rate")
+  scale_fill_manual(values=cbPalette)+
+  ylab("Daily root growth rate")+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.88, .88),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("RootGrowthRate_2022_SP.png", width=6, height=5, units="in", path="figures/")
+
+#LTRI4
+rics %>% 
+  group_by(location, fyear, var, harv_trt) %>% 
+  summarise(m_ave_rate= mean(LTRI3_mass, na.rm=T), 
+            sd_ave_rate = sd(LTRI3_mass, na.rm=T), 
+            n_ave_rate = n()) %>% 
+  mutate(se_ave_rate=sd_ave_rate/sqrt(n_ave_rate)) %>% 
+  filter(fyear=="2022"&location=="Rosemount") %>% 
+  ggplot(aes(y=m_ave_rate, x=var, fill=harv_trt))+
+  facet_grid(~location)+
+  geom_col(position="dodge")+
+  geom_errorbar(aes(ymax=m_ave_rate+se_ave_rate, ymin=m_ave_rate-se_ave_rate),
+                width=0.5, position=position_dodge(.9))+
+  scale_fill_manual(values=cbPalette)+
+  ylab("Net root growth rate")+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.88, .88),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("LTRI3_2022_Ros.png", width=6, height=5, units="in", path="figures/")
 
 #SS1 mass
 rics %>% 

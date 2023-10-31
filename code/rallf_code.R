@@ -412,3 +412,74 @@ ggplot(aes(x=extract_date, y=m_root_biomass, color=harv_trt))+
   geom_point()+
   geom_errorbar(aes(ymax=m_root_biomass+se_root_biomass, ymin=m_root_biomass-se_root_biomass))+
   facet_grid(~location)
+
+#RootCN ----
+#Need to finish
+rics$STRI1_cn<-rics$STRI1_c/rics$STRI1_n
+rics$STRI2_cn<-rics$STRI2_c/rics$STRI2_n
+rics$STRI3_cn<-rics$STRI3_c/rics$STRI3_n
+rics %>% 
+  filter(year=="2021") %>% 
+  rowwise(c(location, plot, rep, var, harv_trt)) %>% 
+  summarise(mean_cn = mean(c(STRI1_cn, STRI2_cn, STRI3_cn), na.rm = TRUE)) %>% 
+  group_by(location, var, harv_trt) %>% 
+  summarise(m_cn = mean(mean_cn, na.rm=T), 
+            sd_cn = sd(mean_cn, na.rm=T), 
+            n_cn = n()) %>% 
+  mutate(se_cn=sd_cn/sqrt(n_cn)) %>% 
+  filter(location=="Rosemount") %>% 
+  ggplot(aes(y=m_cn, x=var, fill=harv_trt))+
+  facet_grid(~location)+
+  geom_col(position="dodge")+
+  geom_errorbar(aes(ymax=m_cn+se_cn, ymin=m_cn-se_cn),
+                width=0.5, position=position_dodge(.9))+
+  scale_fill_manual(values=cbPalette)+
+  ylab("Mean C:N")+
+  coord_cartesian(y=c(0,18))+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.2, .88),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("CN_2021_Ros.png", width=6, height=5, units="in", path="figures/")
+#SP
+rics %>% 
+  filter(year=="2021") %>% 
+  rowwise(c(location, plot, rep, var, harv_trt)) %>% 
+  summarise(mean_cn = mean(c(STRI1_cn, STRI2_cn, STRI3_cn), na.rm = TRUE)) %>% 
+  group_by(location, var, harv_trt) %>% 
+  summarise(m_cn = mean(mean_cn, na.rm=T), 
+            sd_cn = sd(mean_cn, na.rm=T), 
+            n_cn = n()) %>% 
+  mutate(se_cn=sd_cn/sqrt(n_cn)) %>% 
+  filter(location=="St. Paul") %>% 
+  ggplot(aes(y=m_cn, x=var, fill=harv_trt))+
+  facet_grid(~location)+
+  geom_col(position="dodge")+
+  geom_errorbar(aes(ymax=m_cn+se_cn, ymin=m_cn-se_cn),
+                width=0.5, position=position_dodge(.9))+
+  scale_fill_manual(values=cbPalette)+
+  ylab("Mean C:N")+
+  coord_cartesian(y=c(0,18))+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.88, .88),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("CN_2021_SP.png", width=6, height=5, units="in", path="figures/")

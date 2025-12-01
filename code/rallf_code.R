@@ -57,6 +57,7 @@ wylds<-ylds %>%
               id_cols=c(location, year, plot, rep, var, harv_trt))
 wylds$fd<-as.factor(str_sub(wylds$var, 3, 4))
 wylds$var2<-as.factor(str_sub(wylds$var, 1, 2))
+wylds$fyr<-as.factor(wylds$year)
 
 #Summary of yields ----
 wylds %>% 
@@ -91,6 +92,17 @@ wylds %>%
         axis.text.y=element_text(size=12, color='black'))
 ggsave("Yield.png", width=11, height=5, units="in", path="figures/")
 
+wylds %>% 
+  rowwise(c(location, fyr, plot,  rep,var, harv_trt)) %>% 
+  summarise(sum_ylds = sum(c(dm_yld_1, dm_yld_2, dm_yld_3, dm_yld_4, dm_yld_5), na.rm = TRUE)) %>% 
+  lme(sum_ylds~var*harv_trt, random=~1|location/fyr/rep, na.action=na.omit, data=.) %>% 
+  (function(model) {
+    print("ANOVA Table:")
+    print(anova(model))
+    return(model)
+  }) %>%
+  emmeans(~var) %>% 
+  cld(., Letters=letters)
 #Summary of NDFD48 ----
 ylds %>% 
   group_by(location, year, var, harv_trt) %>% 
@@ -122,6 +134,15 @@ ylds %>%
         axis.text.y=element_text(size=12, color='black'))
 ggsave("NDFD.png", width=11, height=5, units="in", path="figures/")
 
+ylds %>% 
+  lme(NDFD48~var*harv_trt, random=~1|location/fyr/rep, na.action=na.omit, data=.) %>% 
+  (function(model) {
+    print("ANOVA Table:")
+    print(anova(model))
+    return(model)
+  }) %>%
+  emmeans(~harv_trt) %>% #toggle this between var and harv_trt
+  cld(., Letters=letters)
 #Summary of NDF ----
 ylds %>% 
   group_by(location, year, var, harv_trt) %>% 
@@ -184,6 +205,15 @@ ylds %>%
         axis.text.y=element_text(size=12, color='black'))
 ggsave("CrudeProtein.png", width=11, height=5, units="in", path="figures/")
 
+ylds %>% 
+  lme(CP~var*harv_trt, random=~1|location/fyr/rep, na.action=na.omit, data=.) %>% 
+  (function(model) {
+    print("ANOVA Table:")
+    print(anova(model))
+    return(model)
+  }) %>%
+  emmeans(~harv_trt) %>% 
+  cld(., Letters=letters)
 #RFV ----
 #There are issues with the 45 day data in 2024
 ylds %>% 
@@ -428,6 +458,16 @@ rics %>%
         axis.title.y = element_text(size=12, color='black'),
         axis.text.y=element_text(size=12, color='black'))
 ggsave("GRP.png", width=11, height=5, units="in", path="figures/")
+
+rics %>% 
+  lme(GRP~var*harv_trt, random=~1|location/fyear/rep, na.action=na.omit, data=.) %>% 
+  (function(model) {
+    print("ANOVA Table:")
+    print(anova(model))
+    return(model)
+  }) %>%
+  emmeans(~harv_trt) %>% 
+  cld(., Letters=letters)
 #Root death ----
 rics %>% 
   group_by(year, location, var, harv_trt) %>% 
@@ -456,7 +496,15 @@ rics %>%
         axis.title.y = element_text(size=12, color='black'),
         axis.text.y=element_text(size=12, color='black'))
 ggsave("Mortality.png", width=11, height=5, units="in", path="figures/")
-
+rics %>% 
+  lme(DA~var*harv_trt, random=~1|location/fyear/rep, na.action=na.omit, data=.) %>% 
+  (function(model) {
+    print("ANOVA Table:")
+    print(anova(model))
+    return(model)
+  }) %>%
+  emmeans(~harv_trt) %>% 
+  cld(., Letters=letters)
 #Root ave_rate ----
 rics %>% 
   filter(fyear!="2021") %>% 
@@ -502,7 +550,15 @@ rics %>%
         axis.title.y = element_text(size=12, color='black'),
         axis.text.y=element_text(size=12, color='black'))
 ggsave("RootGrowthRate.png", width=8, height=5, units="in", path="figures/")
-
+rics %>% 
+  lme(ave_rate~var*harv_trt, random=~1|location/fyear/rep, na.action=na.omit, data=.) %>% 
+  (function(model) {
+    print("ANOVA Table:")
+    print(anova(model))
+    return(model)
+  }) %>%
+  emmeans(~harv_trt) %>% 
+  cld(., Letters=letters)
 #####Old analyses ----
 #Material below this has not been edited to account for complete dataset.
 #LTRI4
@@ -645,3 +701,47 @@ rics %>%
         axis.title.y = element_text(size=12, color='black'),
         axis.text.y=element_text(size=12, color='black'))
 ggsave("CN_2021_SP.png", width=6, height=5, units="in", path="figures/")
+
+#Persistence ----
+per<-read_excel(paste0(zz,"/data/rallf_master.xlsx"), sheet="Persistence", na="NA")
+per$ffd<-as.factor(per$fd)
+per %>% 
+  group_by(site, var, ffd, schedule) %>% 
+  summarise(m_score= mean(score, na.rm=T), 
+            sd_score = sd(score, na.rm=T), 
+            n_score = n()) %>% 
+  mutate(se_score=sd_score/sqrt(n_score)) %>% 
+  ggplot(aes(y=m_score, x=var, color=schedule))+
+  facet_grid(site~ffd)+
+  geom_point(position=position_dodge(.9))+
+  geom_errorbar(aes(ymax=m_score+se_score, ymin=m_score-se_score),
+                width=0.5, position=position_dodge(.9))+
+  scale_color_manual(values=cbPalette)+
+  ylab("Year 5 regrowth (1=Excellent, 5=None)")+
+  coord_cartesian(ylim=c(1, 5))+
+  xlab("Variety")+
+  theme(panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.background=element_rect(color="black", fill="white"),
+        panel.border=element_blank(),
+        legend.key.size =unit(0.75, "cm"),
+        legend.text = element_text(size=12),
+        axis.line = element_line(color='black'),
+        legend.title=element_blank(),
+        legend.position = c(.13, .85),
+        axis.title.x=element_text(size=12, color='black'),
+        axis.text.x=element_text(size=12, color='black'),
+        axis.title.y = element_text(size=12, color='black'),
+        axis.text.y=element_text(size=12, color='black'))
+ggsave("Persistence.png", width=8, height=5, units="in", path="figures/")
+
+per%>% 
+  lme(score~var*ffd*schedule, random=~1|site, na.action=na.omit, data=.) %>% 
+  (function(model) {
+    print("ANOVA Table:")
+    print(anova(model))
+    return(model)
+  }) %>%
+  #emmeans(~ffd) %>%
+  emmeans(~var|schedule) %>% #toggle this between var and harv_trt
+  cld(., Letters=letters)

@@ -747,36 +747,42 @@ per%>%
   cld(., Letters=letters)
 
 #Persistance over varieties and locations, focus on cutting schedule
+#make a new column to flip scores
+fscore<-data.frame("score"=c(1:5), "nscore"=c(5,4,3,2,1))
 per %>% 
+  left_join(fscore, by="score") %>% 
   group_by(ffd, schedule) %>% 
-  summarise(m_score= mean(score, na.rm=T), 
-            sd_score = sd(score, na.rm=T), 
+  summarise(m_score= mean(nscore, na.rm=T), 
+            sd_score = sd(nscore, na.rm=T), 
             n_score = n()) %>% 
   mutate(se_score=sd_score/sqrt(n_score)) %>% 
-  ggplot(aes(y=m_score, x=ffd, color=schedule))+
+  ggplot(aes(y=m_score, x=ffd, fill=schedule))+
   #facet_grid(site~ffd)+
-  geom_point(position=position_dodge(.9), size=2.5)+
+  geom_bar(position=position_dodge(.9), stat="identity", width=.75)+
+  #geom_point(position=position_dodge(.9), size=2.5)+
   geom_errorbar(aes(ymax=m_score+se_score, ymin=m_score-se_score),
                 width=0.2, 
-                linewidth=0.8, position=position_dodge(.9))+
-  scale_color_manual(values=cbPalette)+
-  ylab("Yr 5 regrowth (1=Great; 5=None)")+
-  coord_cartesian(ylim=c(1, 5))+
+                position=position_dodge(.9))+
+  scale_fill_manual(values=cbPalette)+
+  ylab("Yr 5 regrowth (1=None; 5=Excellent)")+
+  coord_cartesian(ylim=c(1, 5.7))+
+  scale_y_continuous(breaks=c(1,2,3,4,5))+
   xlab("Fall dormancy value")+
-  guides(color = guide_legend(title = "Harvest schedule"))+
+  guides(fill = guide_legend(title = "Harvest schedule"))+
   theme(panel.grid.major=element_blank(),
         panel.grid.minor=element_blank(),
         panel.background=element_rect(color="black", fill="white"),
         panel.border=element_blank(),
-        legend.key.size =unit(0.75, "cm"),
-        legend.text = element_text(size=12),
+        legend.key.size =unit(0.50, "cm"),
+        legend.text = element_text(size=11),
         axis.line = element_line(color='black'),
         #legend.title=element_blank(),
-        legend.position = c(.2, .78),
-        axis.title.x=element_text(size=12, color='black'),
-        axis.text.x=element_text(size=12, color='black'),
-        axis.title.y = element_text(size=12, color='black'),
-        axis.text.y=element_text(size=12, color='black'))
+        #legend.position = c(.8, .78),
+        legend.position = "top", legend.direction = "horizontal",
+        axis.title.x=element_text(size=11, color='black'),
+        axis.text.x=element_text(size=11, color='black'),
+        axis.title.y = element_text(size=11, color='black'),
+        axis.text.y=element_text(size=11, color='black'))
 ggsave("Persistence_MFA.png", width=4, height=3, units="in", path="figures/")
 per%>% 
   lme(score~ffd*schedule, random=~1|site/variety, na.action=na.omit, data=.) %>% 
